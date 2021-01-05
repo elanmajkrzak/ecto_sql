@@ -14,6 +14,7 @@ defmodule Mix.Tasks.Ecto.Migrate do
     all: :boolean,
     step: :integer,
     to: :integer,
+    smart: :boolean,
     quiet: :boolean,
     prefix: :string,
     pool_size: :integer,
@@ -105,7 +106,7 @@ defmodule Mix.Tasks.Ecto.Migrate do
     {opts, _} = OptionParser.parse! args, strict: @switches, aliases: @aliases
 
     opts =
-      if opts[:to] || opts[:step] || opts[:all],
+      if opts[:to] || opts[:step] || opts[:all] || opts[:smart],
         do: opts,
         else: Keyword.put(opts, :all, true)
 
