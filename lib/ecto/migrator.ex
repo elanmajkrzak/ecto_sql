@@ -398,6 +398,7 @@ defmodule Ecto.Migrator do
           |> Enum.into(%{})
 
         versions
+        |> Enum.filter(fn [_, migration_script] -> migration_script != nil end)
         |> Enum.map(&load_migration!/1)
         |> Enum.map(&hash_migration_source/1)
         |> Enum.sort(fn {left, _, _}, {right, _, _} -> left < right end)
@@ -578,6 +579,7 @@ defmodule Ecto.Migrator do
       unless skip_table_creation do
         verbose_schema_migration repo, "create schema migrations table", fn ->
           SchemaMigration.ensure_schema_migrations_table!(repo, config, opts)
+          SchemaMigration.ensure_schema_migrations_table_updated!(repo, config, opts)
         end
       end
 
@@ -725,6 +727,8 @@ defmodule Ecto.Migrator do
     end
   end
 
+  defp load_migration!([version, migration_source]) when is_nil(migration_source), do: {version, "", ""}
+
   defp load_migration!([version, migration_source]) do
     loaded_modules = migration_source |> Code.compile_string() |> Enum.map(&elem(&1, 0))
 
@@ -775,7 +779,8 @@ defmodule Ecto.Migrator do
   end
 
   defp do_direction(:down, repo, version, migration_script, mod, opts) do
-    conditional_lock_for_migrations mod, version, repo, opts, fn config, versions ->
+    conditional_lock_for_migrations mod, version, repo, opts, fn config, versions_with_file ->
+      versions = versions_with_file |> Enum.map(&List.first(&1))
       if version in versions do
         do_down(repo, config, version, migration_script, mod, opts)
       end
