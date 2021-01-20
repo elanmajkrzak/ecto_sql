@@ -740,7 +740,7 @@ defmodule Ecto.Migrator do
   end
 
   defp get_source(file, mod) do
-    if mod = down?(mod) do
+    if down?(mod) || change?(mod) do
       case File.read(file) do
         {:ok, migration_script} -> migration_script
         _ -> raise Ecto.MigrationError, "file #{Path.relative_to_cwd(file)} could not be read"
@@ -756,6 +756,10 @@ defmodule Ecto.Migrator do
 
   defp down?(mod) do
     function_exported?(mod, :down, 0)
+  end
+
+  defp change?(mod) do
+    function_exported?(mod, :change, 0)
   end
 
   defp migrate([], direction, _repo, opts) do
