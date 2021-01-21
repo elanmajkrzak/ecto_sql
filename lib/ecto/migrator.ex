@@ -247,8 +247,6 @@ defmodule Ecto.Migrator do
 
   defp do_up(repo, config, version, migration_script, module, opts) do
     async_migrate_maybe_in_transaction(repo, config, version, migration_script, module, :up, opts, fn ->
-    #TODO https://stackoverflow.com/a/13237894, Code.eval for runnin it, should check for down as well
-    #this should maybe be earlier though, before we start running the ups
       attempt(repo, config, version, module, :forward, :up, :up, opts)
         || attempt(repo, config, version, module, :forward, :change, :up, opts)
         || {:error, Ecto.MigrationError.exception(
@@ -384,34 +382,14 @@ defmodule Ecto.Migrator do
   """
   @spec run(Ecto.Repo.t, String.t | [String.t] | [{integer, module}], atom, Keyword.t) :: [integer]
   def run(repo, migration_source, _direction, opts = [smart: true]) do
-    migration_source = List.wrap(migration_source)
-
-    pending =
-      lock_for_migrations true, repo, opts, fn _config, versions ->
-        versions_with_hash =
-          versions
-          |> Enum.map(fn [version | _] -> version end)
-          |> pending_in_direction(migration_source, :smart)
-          |> Enum.map(&load_migration!/1)
-          |> Enum.map(&hash_migration_source/1)
-          |> Enum.map(fn {version, _, hash} -> {version, hash} end)
-          |> Enum.into(%{})
-
-        versions
-        |> Enum.filter(fn [_, migration_script] -> migration_script != nil end)
-        |> Enum.map(&load_migration!/1)
-        |> Enum.map(&hash_migration_source/1)
-        |> Enum.sort(fn {left, _, _}, {right, _, _} -> left < right end)
-        |> needs_down?(versions_with_hash, :no_change)
-        |> Enum.reverse
-      end
-
-    # The lock above already created the table, so we can now skip it.
-    opts = Keyword.put(opts, :skip_table_creation, true)
-
-    ensure_no_duplication!(pending)
-    migrate(pending |> IO.inspect(label: "pending"), :smart_down, repo, opts)
-    run(repo, migration_source, :up, [all: true])
+    smart_migrations_confirm(repo)
+    |> case  do
+       :ok ->
+          run_smart(repo, migration_source, opts)
+       _ ->
+          #noop if user enters anything other than 'y'
+          :ok
+     end
   end
 
   def run(repo, migration_source, direction, opts) do
@@ -456,7 +434,7 @@ defmodule Ecto.Migrator do
   Returns an array of tuples as the migration status of the given repo,
   without actually running any migrations.
   """
-  @spec migrations(Ecto.Repo.t, [String.t], Keyword.t) :: [{:up | :down, id :: integer(), name :: String.t}]
+  @spec migrations(Ecto.Repo.t, [String.t], Keyword.t) :: [{:up | :down | :diff, id :: integer(), name :: String.t}]
   def migrations(repo, directories, opts \\ []) do
     directories = List.wrap(directories)
 
@@ -464,6 +442,37 @@ defmodule Ecto.Migrator do
     |> migrated_versions(opts)
     |> collect_migrations(directories, opts)
     |> Enum.sort_by(fn {_, version, _} -> version end)
+  end
+
+  defp run_smart(repo, migration_source, opts = [smart: true]) do
+    migration_source = List.wrap(migration_source)
+
+    pending =
+      lock_for_migrations true, repo, opts, fn _config, versions ->
+        versions_with_hash =
+          versions
+          |> Enum.map(fn [version | _] -> version end)
+          |> pending_in_direction(migration_source, :smart)
+          |> Enum.map(&load_migration!/1)
+          |> Enum.map(&hash_migration_source/1)
+          |> Enum.map(fn {version, _, hash} -> {version, hash} end)
+          |> Enum.into(%{})
+
+        versions
+        |> Enum.filter(fn [_, migration_script] -> migration_script != nil end)
+        |> Enum.map(&load_migration!/1)
+        |> Enum.map(&hash_migration_source/1)
+        |> Enum.sort(fn {left, _, _}, {right, _, _} -> left < right end)
+        |> needs_down?(versions_with_hash, :no_change)
+        |> Enum.reverse
+      end
+
+    # The lock above already created the table, so we can now skip it.
+    opts = Keyword.put(opts, :skip_table_creation, true)
+
+    ensure_no_duplication!(pending)
+    migrate(pending, :smart_down, repo, opts)
+    run(repo, migration_source, :up, [all: true])
   end
 
   defp hash_migration_source([]), do: []
@@ -497,6 +506,45 @@ defmodule Ecto.Migrator do
   end
 
   defp needs_down?([], :needs_down), do: []
+
+  defp smart_migrations_confirm(repo) do
+    opts = [smart: true]
+    paths = Mix.EctoSQL.ensure_migrations_paths(repo, opts)
+
+    IO.puts(
+      """
+
+      Repo: #{inspect(repo)}
+
+       Status    Migration ID    Migration Name
+      --------------------------------------------------
+      """ <>
+      Enum.map_join(migrations(repo, paths, opts), "\n", fn {status, number, description} ->
+       "  #{format(status, 10)}#{format(number, 16)}#{description}"
+      end) <>
+      """
+      \n
+      Running in smart mode. Any migrations showing diff are currently up, but need to be migrated down.
+      To migrate your database to be consistent with the migrations on file, each migration that is below
+      a migration with diff in the previous list will need to be run as a down.
+      The migrations on file will then be run as ups.
+      \n
+      """
+    )
+
+    IO.getn("This process could cause data loss, do you wish to continue (y/n)?")
+    |> String.downcase()
+    |> case  do
+         "y" -> :ok
+         _ -> :halt
+       end
+  end
+
+  defp format(content, pad) do
+    content
+    |> to_string
+    |> String.pad_trailing(pad)
+  end
 
   defp collect_migrations(versions, migration_source, _opts = [smart: true]) do
     versions_with_hash =
