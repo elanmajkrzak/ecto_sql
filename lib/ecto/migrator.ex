@@ -382,14 +382,14 @@ defmodule Ecto.Migrator do
   """
   @spec run(Ecto.Repo.t, String.t | [String.t] | [{integer, module}], atom, Keyword.t) :: [integer]
   def run(repo, migration_source, _direction, opts = [smart: true]) do
-    smart_migrations_confirm(repo)
-    |> case  do
-       :ok ->
-          run_smart(repo, migration_source, opts)
-       _ ->
-          #noop if user enters anything other than 'y'
-          :ok
-     end
+    with true <- Mix.env() == :dev,
+        :ok <- smart_migrations_confirm(repo)
+    do
+      run_smart(repo, migration_source, opts)
+    else
+      #noop if not in dev or if user enters anything other than 'y'
+      output -> :ok
+    end
   end
 
   def run(repo, migration_source, direction, opts) do
