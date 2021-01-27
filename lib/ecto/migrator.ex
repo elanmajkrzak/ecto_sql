@@ -213,6 +213,7 @@ defmodule Ecto.Migrator do
   @spec up(Ecto.Repo.t, integer, module, Keyword.t) :: :ok | :already_up
   def up(repo, version, module, opts \\ []) do
     conditional_lock_for_migrations module, version, repo, opts, fn config, versions ->
+      versions = versions |> Enum.map(&List.first(&1))
       if version in versions do
         :already_up
       else
@@ -271,6 +272,7 @@ defmodule Ecto.Migrator do
   @spec down(Ecto.Repo.t, integer, module) :: :ok | :already_down
   def down(repo, version, module, opts \\ []) do
     conditional_lock_for_migrations module, version, repo, opts, fn config, versions ->
+      versions = versions |> Enum.map(&List.first(&1))
       if version in versions do
         do_down(repo, config, version, "", module, opts)
       else
@@ -388,7 +390,7 @@ defmodule Ecto.Migrator do
       run_smart(repo, migration_source, opts)
     else
       #noop if not in dev or if user enters anything other than 'y'
-      output -> :ok
+      _ -> :ok
     end
   end
 
@@ -501,7 +503,7 @@ defmodule Ecto.Migrator do
 
   defp needs_down?([], _, :no_change), do: []
 
-  defp needs_down?([{version, mod, hash} | migrations_on_file], :needs_down) do
+  defp needs_down?([{version, mod, _} | migrations_on_file], :needs_down) do
     [{version, mod, ""}] ++ needs_down?(migrations_on_file, :needs_down)
   end
 
@@ -840,7 +842,7 @@ defmodule Ecto.Migrator do
   end
 
   defp do_direction(:smart_down, repo, version, migration_script, mod, opts) do
-    conditional_lock_for_migrations mod, version, repo, opts, fn config, versions ->
+    conditional_lock_for_migrations mod, version, repo, opts, fn config, _ ->
       do_down(repo, config, version, migration_script, mod, opts)
     end
   end
