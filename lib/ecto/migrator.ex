@@ -487,11 +487,15 @@ defmodule Ecto.Migrator do
     {version, module, hash_migration_source(migration_source)}
   end
 
+  defp hash_migration_source(""), do: nil
+
   defp hash_migration_source(migration_source) when is_binary(migration_source) do
     :crypto.hash(:sha256, migration_source)
     |> Base.encode16()
     |> String.downcase()
   end
+
+  defp hash_migration_source(nil), do: nil
 
   defp needs_down?([{version, mod, hash} | migrations_on_file], complete_migrations, :no_change) when is_map(complete_migrations) do
     if Map.get(complete_migrations, version) == hash do
@@ -531,6 +535,9 @@ defmodule Ecto.Migrator do
       a migration with diff in the previous list will need to be run as a down.
       The migrations on file will then be run as ups.
       \n
+      Migrations showing n_a could not find a down script, and as such will not be run as down. This
+      could potentially leave your database in an inconsistent state if some migration steps are missed.
+      If you wish to use smart migrations, rebuild the database from scratch using ecto sql with smart migrations.
       """
     )
 
@@ -564,10 +571,10 @@ defmodule Ecto.Migrator do
       |> Enum.map(&hash_migration_source/1)
       |> Enum.map(fn {version, name, hash} ->
         {
-          if Map.get(versions_with_hash, version) == hash do
-            :up
-          else
-            :diff
+          case Map.get(versions_with_hash, version) do
+            ^hash -> :up
+            nil -> :n_a
+            _ -> :diff
           end, version, name
         }
         end)
