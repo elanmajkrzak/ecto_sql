@@ -4,3 +4,6 @@
 /doc
 /tmp
 erl_crash.dump
+
+.idea/
+*.iml

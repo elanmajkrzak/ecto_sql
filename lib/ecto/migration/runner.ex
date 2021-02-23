@@ -12,6 +12,7 @@ defmodule Ecto.Migration.Runner do
   @doc """
   Runs the given migration.
   """
+  #args: repo, config, version, module, :forward, :up, :up, opts
   def run(repo, config, version, module, direction, operation, migrator_direction, opts) do
     level = Keyword.get(opts, :log, :info)
     sql = Keyword.get(opts, :log_sql, false)

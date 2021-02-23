@@ -9,12 +9,12 @@ defmodule MigrationsAgent do
     Agent.get(__MODULE__, & &1)
   end
 
-  def up(version, opts) do
-    Agent.update(__MODULE__, &[{version, opts[:prefix]} | &1])
+  def up(version, migration_script, opts) do
+    Agent.update(__MODULE__, &[{version, migration_script, opts[:prefix]} | &1])
   end
 
   def down(version, opts) do
-    Agent.update(__MODULE__, &List.delete(&1, {version, opts[:prefix]}))
+    Agent.update(__MODULE__, &List.delete(&1, {version, "", opts[:prefix]}))
   end
 end
 
@@ -55,7 +55,7 @@ defmodule EctoSQL.TestAdapter do
   def execute(_, _, {:nocache, {:all, %{from: %{source: {"schema_migrations", _}}}}}, _, opts) do
     true = opts[:schema_migration]
     versions = MigrationsAgent.get()
-    {length(versions), Enum.map(versions, &[elem(&1, 0)])}
+    {length(versions), Enum.map(versions, &[elem(&1, 0) | [elem(&1, 1)]])}
   end
 
   def execute(_, _meta, {:nocache, {:delete_all, %{from: %{source: {"schema_migrations", _}}}}}, [version], opts) do
@@ -67,7 +67,8 @@ defmodule EctoSQL.TestAdapter do
   def insert(_, %{source: "schema_migrations"}, val, _, _, opts) do
     true = opts[:schema_migration]
     version = Keyword.fetch!(val, :version)
-    MigrationsAgent.up(version, opts)
+    migration_script = Keyword.fetch!(val, :migration_script)
+    MigrationsAgent.up(version, migration_script, opts)
     {:ok, []}
   end
 

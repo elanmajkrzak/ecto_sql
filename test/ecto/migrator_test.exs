@@ -272,7 +272,7 @@ defmodule Ecto.MigratorTest do
       :ok = up(TestRepo, 10, ChangeMigration, prefix: :custom)
     end)
 
-    assert [{10, :custom} | _] = MigrationsAgent.get()
+    assert [{10, "", :custom} | _] = MigrationsAgent.get()
 
     Process.put(:repo_default_options, [prefix: nil])
 
@@ -280,13 +280,13 @@ defmodule Ecto.MigratorTest do
       :ok = up(TestRepo, 11, ChangeMigration, prefix: :custom)
     end)
 
-    assert [{11, :custom} | _] = MigrationsAgent.get()
+    assert [{11, "", :custom} | _] = MigrationsAgent.get()
 
     capture_log(fn ->
       :already_up = up(TestRepo, 11, ChangeMigration, prefix: :custom)
     end)
 
-    assert [{11, :custom} | _] = MigrationsAgent.get()
+    assert [{11, "", :custom} | _] = MigrationsAgent.get()
   end
 
   test "logs migrations" do
@@ -452,7 +452,7 @@ defmodule Ecto.MigratorTest do
         assert_receive {:lock_for_migrations, _, _, []}
         refute_received {:lock_for_migrations, _, _, _}
 
-        assert match?({:create_if_not_exists, %_{name: :schema_migrations}, _}, last_command())
+        assert match?({:alter, %_{name: :schema_migrations}, _}, last_command())
       end
     end
   end
